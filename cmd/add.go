@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"yoheiyayoi/bread/src/breadTypes"
-	"yoheiyayoi/bread/src/utils"
+	"yoheiyayoi/bread/breadTypes"
+	"yoheiyayoi/bread/utils"
 
 	"github.com/BurntSushi/toml"
 	"github.com/charmbracelet/log"

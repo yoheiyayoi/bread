@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"os"
-	"yoheiyayoi/bread/src/utils"
+	"yoheiyayoi/bread/utils"
 
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"

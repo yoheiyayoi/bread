@@ -1,7 +1,7 @@
 package main
 
 import (
-	"yoheiyayoi/bread/src/cmd"
+	"yoheiyayoi/bread/cmd"
 )
 
 func main() {

@@ -3,7 +3,7 @@ package cmd
 import (
 	"os"
 	"strings"
-	"yoheiyayoi/bread/src/breadTypes"
+	"yoheiyayoi/bread/breadTypes"
 
 	"github.com/BurntSushi/toml"
 	"github.com/charmbracelet/log"

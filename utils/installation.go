@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"yoheiyayoi/bread/src/breadTypes"
+	"yoheiyayoi/bread/breadTypes"
 
 	"github.com/BurntSushi/toml"
 	"github.com/charmbracelet/log"
@@ -187,7 +187,7 @@ func (ic *InstallationContext) InstallSinglePackage(name, versionSpec string, re
 
 	shortName := getPackageName(pkgName)
 	linkPath := filepath.Join(baseDir, shortName+".lua")
-	content := ic.linkRootSameIndex(pkgName, version)
+	content := ic.linkRootSameIndex(pkgName, version, realm)
 	if err := os.WriteFile(linkPath, []byte(content), 0644); err != nil {
 		return err
 	}
@@ -265,7 +265,7 @@ func (ic *InstallationContext) writeRootPackageLinks(realm Realm, dependencies m
 		pkgName, version := parsePackageSpec(depName, versionSpec)
 		shortName := getPackageName(pkgName)
 		linkPath := filepath.Join(baseDir, shortName+".lua")
-		content := ic.linkRootSameIndex(pkgName, version)
+		content := ic.linkRootSameIndex(pkgName, version, realm)
 		if err := os.WriteFile(linkPath, []byte(content), 0644); err != nil {
 			return err
 		}
@@ -274,10 +274,30 @@ func (ic *InstallationContext) writeRootPackageLinks(realm Realm, dependencies m
 	return nil
 }
 
-func (ic *InstallationContext) linkRootSameIndex(name, version string) string {
+func (ic *InstallationContext) linkRootSameIndex(name, version string, realm Realm) string {
 	fullName := packageIDFileName(name, version)
 	shortName := getPackageName(name)
-	return fmt.Sprintf("return require(script.Parent.%s[\"%s\"][\"%s\"])\n", IndexDirName, fullName, shortName)
+	requirePath := fmt.Sprintf("require(script.Parent.%s[\"%s\"][\"%s\"])", IndexDirName, fullName, shortName)
+
+	// Try to extract types from the package
+	packageDir := filepath.Join(ic.getIndexDir(realm), fullName, shortName)
+	typeExtractor := NewTypeExtractor()
+	types, err := typeExtractor.ExtractTypesFromPackage(packageDir, shortName)
+
+	if err != nil || len(types) == 0 {
+		// No types found, use simple require
+		return fmt.Sprintf("return %s\n", requirePath)
+	}
+
+	// Log the types being re-exported
+	typeNames := make([]string, len(types))
+	for i, t := range types {
+		typeNames[i] = t.Name
+	}
+	log.Debugf("Re-exporting %d types from %s: %v", len(types), shortName, typeNames)
+
+	// Generate link file with type re-exports
+	return typeExtractor.GenerateLinkFileWithTypes(requirePath, types, "_Package")
 }
 
 func packageIDFileName(name, version string) string {

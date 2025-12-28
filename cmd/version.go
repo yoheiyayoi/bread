@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"yoheiyayoi/bread/src/config"
+	"yoheiyayoi/bread/config"
 
 	"github.com/spf13/cobra"
 )

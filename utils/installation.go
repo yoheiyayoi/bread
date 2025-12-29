@@ -57,6 +57,14 @@ func newInstallSession() *installSession {
 	}
 }
 
+func (s *installSession) Go(fn func()) {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		fn()
+	}()
+}
+
 // Functions
 func init() {
 	log.SetReportTimestamp(false)
@@ -186,11 +194,7 @@ func (ic *InstallationContext) installPackageRecursive(name, versionSpec string,
 	}
 
 	session.totalCount.Add(1)
-	session.wg.Add(1)
-
-	go func() {
-		defer session.wg.Done()
-
+	session.Go(func() {
 		if err := ic.downloadPackage(pkgName, version, realm); err != nil {
 			session.errChan <- err
 			return
@@ -210,7 +214,7 @@ func (ic *InstallationContext) installPackageRecursive(name, versionSpec string,
 		for depName, depVersion := range deps {
 			ic.installPackageRecursive(depName, depVersion, realm, session)
 		}
-	}()
+	})
 }
 
 func (ic *InstallationContext) getPackageDependencies(name, version string, realm Realm) (map[string]string, error) {
@@ -360,14 +364,14 @@ func (ic *InstallationContext) linkRootSameIndex(name, version string, realm Rea
 
 	if err != nil || len(types) == 0 {
 		// No types found, use simple require
-		return fmt.Sprintf("return %s\n", requirePath)
+		return fmt.Sprintf("--Bread\n--%s\nreturn %s\n", fullName, requirePath)
 	}
 
 	// Log the types being re-exported
 	log.Debugf("Re-exporting %d types from %s", len(types), shortName)
 
 	// Generate link file with type re-exports
-	return typeExtractor.GenerateLinkFileWithTypes(requirePath, types, "_Package")
+	return typeExtractor.GenerateLinkFileWithTypes(requirePath, types, "_Package", fullName)
 }
 
 func packageIDFileName(name, version string) string {

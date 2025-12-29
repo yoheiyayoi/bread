@@ -2,6 +2,7 @@ package utils
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -126,10 +127,13 @@ func (te *TypeExtractor) GenerateLinkFileWithTypes(
 	requirePath string,
 	types []ExportedType,
 	moduleName string,
+	fullName string,
 ) string {
 	var sb strings.Builder
 
 	// Local variable for the required module
+	sb.WriteString("--Bread\n")
+	sb.WriteString(fmt.Sprintf("--%s\n", fullName))
 	sb.WriteString("local ")
 	sb.WriteString(moduleName)
 	sb.WriteString(" = ")

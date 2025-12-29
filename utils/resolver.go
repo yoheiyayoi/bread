@@ -42,7 +42,7 @@ func ResolveVersion(name, constraint string) (string, error) {
 			semverV = "v" + v
 		}
 
-		if matchConstraint(semverV, constraint) {
+		if MatchConstraint(semverV, constraint) {
 			if bestMatch == "" || semver.Compare(semverV, bestMatch) > 0 {
 				bestMatch = semverV
 			}
@@ -92,7 +92,7 @@ func getPackageVersions(name string) ([]string, error) {
 	return versions, nil
 }
 
-func matchConstraint(version, constraint string) bool {
+func MatchConstraint(version, constraint string) bool {
 	// Basic implementation of semver constraint matching
 	// Supports: ^, exact version, empty (latest)
 
@@ -166,10 +166,10 @@ func matchConstraint(version, constraint string) bool {
 	// Check if it's a partial version
 	if !strings.Contains(constraint, ".") {
 		// "1" -> "^1.0.0"
-		return matchConstraint(version, "^"+constraint+".0.0")
+		return MatchConstraint(version, "^"+constraint+".0.0")
 	} else if strings.Count(constraint, ".") == 1 {
 		// "1.2" -> "^1.2.0"
-		return matchConstraint(version, "^"+constraint+".0")
+		return MatchConstraint(version, "^"+constraint+".0")
 	}
 
 	// Exact version

@@ -65,6 +65,8 @@ func (te *TypeExtractor) ExtractTypesFromPackage(packageDir string, packageName 
 		filepath.Join(packageDir, "init.luau"),
 		filepath.Join(packageDir, packageName+".lua"),
 		filepath.Join(packageDir, packageName+".luau"),
+		filepath.Join(packageDir, "src", "init.lua"),
+		filepath.Join(packageDir, "src", "init.luau"),
 	}
 
 	// Try each candidate file
@@ -78,42 +80,6 @@ func (te *TypeExtractor) ExtractTypesFromPackage(packageDir string, packageName 
 			// Found main entry file, stop looking
 			break
 		}
-	}
-
-	// Also scan all .lua and .luau files in the package directory recursively
-	// to find additional exported types (some packages export types from submodules)
-	err := filepath.Walk(packageDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Skip errors
-		}
-
-		if info.IsDir() {
-			return nil
-		}
-
-		ext := strings.ToLower(filepath.Ext(path))
-		if ext != ".lua" && ext != ".luau" {
-			return nil
-		}
-
-		// Skip if we already processed this as a main file
-		for _, candidate := range candidates {
-			if path == candidate {
-				return nil
-			}
-		}
-
-		types, err := te.ExtractTypesFromFile(path)
-		if err != nil {
-			return nil // Skip files that can't be read
-		}
-
-		allTypes = append(allTypes, types...)
-		return nil
-	})
-
-	if err != nil {
-		return allTypes, err
 	}
 
 	// Remove duplicates

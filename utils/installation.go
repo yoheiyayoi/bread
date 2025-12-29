@@ -9,11 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"yoheiyayoi/bread/breadTypes"
 
 	"github.com/BurntSushi/toml"
 	"github.com/charmbracelet/log"
+	"github.com/fatih/color"
 )
 
 // Types
@@ -35,7 +37,31 @@ const (
 	IndexDirName       = "_Index"
 )
 
+var (
+	Check = color.GreenString("✓")
+	Info  = color.BlueString("ℹ")
+)
+
+// Helper struct for installation state
+type installSession struct {
+	wg           sync.WaitGroup
+	installed    sync.Map // concurrent map for visited packages
+	errChan      chan error
+	successCount atomic.Int32
+	totalCount   atomic.Int32
+}
+
+func newInstallSession() *installSession {
+	return &installSession{
+		errChan: make(chan error, 1000),
+	}
+}
+
 // Functions
+func init() {
+	log.SetReportTimestamp(false)
+}
+
 func NewInstaller(projectPath string, sharedPath *string, serverPath *string) *InstallationContext {
 	configPath := filepath.Join(projectPath, "bread.toml")
 	var config breadTypes.Config
@@ -87,6 +113,7 @@ func (ic *InstallationContext) getIndexDir(realm Realm) string {
 
 func (ic *InstallationContext) Install() error {
 	start := time.Now()
+	session := newInstallSession()
 
 	// Create directories and install packages for each realm
 	realms := []struct {
@@ -98,14 +125,9 @@ func (ic *InstallationContext) Install() error {
 		{RealmDev, ic.Manifest.DevDependencies},
 	}
 
-	var wg sync.WaitGroup
-	totalDeps := len(ic.Manifest.Dependencies) + len(ic.Manifest.ServerDependencies) + len(ic.Manifest.DevDependencies)
-	errChan := make(chan error, totalDeps)
+	log.Info("Installing packages...")
 
-	// Add counters
-	var successCount, totalCount int32
-	var mu sync.Mutex
-
+	// 1. Download Phase
 	for _, r := range realms {
 		if len(r.deps) == 0 {
 			continue
@@ -116,40 +138,23 @@ func (ic *InstallationContext) Install() error {
 			return err
 		}
 
-		// Download packages
+		// Download packages recursively
 		for name, versionSpec := range r.deps {
-			wg.Add(1)
-			go func(n, vs string, realm Realm) {
-				defer wg.Done()
-				mu.Lock()
-				totalCount++
-				mu.Unlock()
-
-				pkgName, version := parsePackageSpec(n, vs)
-				log.Infof("[◆] Downloading %s@%s", pkgName, version)
-
-				if err := ic.downloadPackage(pkgName, version, realm); err != nil {
-					errChan <- err
-				} else {
-					mu.Lock()
-					successCount++
-					mu.Unlock()
-				}
-			}(name, versionSpec, r.realm)
+			ic.installPackageRecursive(name, versionSpec, r.realm, session)
 		}
 	}
 
-	wg.Wait()
-	close(errChan)
+	session.wg.Wait()
+	close(session.errChan)
 
 	// Check for errors
-	for err := range errChan {
+	for err := range session.errChan {
 		if err != nil {
 			return err
 		}
 	}
 
-	// Write root package links
+	// 2. Linking Phase
 	for _, r := range realms {
 		if len(r.deps) > 0 {
 			if err := ic.writeRootPackageLinks(r.realm, r.deps); err != nil {
@@ -158,10 +163,74 @@ func (ic *InstallationContext) Install() error {
 		}
 	}
 
-	log.Infof("Installation complete! %d/%d packages installed successfully", successCount, totalCount)
 	elapsed := time.Since(start)
-	log.Infof("Time taken: %dms", time.Duration(elapsed).Milliseconds())
+	log.Infof("%s Installed %d packages in %dms", Check, session.successCount.Load(), elapsed.Milliseconds())
 	return nil
+}
+
+func (ic *InstallationContext) installPackageRecursive(name, versionSpec string, realm Realm, session *installSession) {
+	pkgName, versionConstraint := parsePackageSpec(name, versionSpec)
+
+	// Resolve version constraint to concrete version
+	version, err := ResolveVersion(pkgName, versionConstraint)
+	if err != nil {
+		session.errChan <- fmt.Errorf("failed to resolve version for %s@%s: %v", pkgName, versionConstraint, err)
+		return
+	}
+
+	pkgID := fmt.Sprintf("%s:%s@%s", realm, pkgName, version)
+
+	// Check if already installed/processing
+	if _, loaded := session.installed.LoadOrStore(pkgID, true); loaded {
+		return
+	}
+
+	session.totalCount.Add(1)
+	session.wg.Add(1)
+
+	go func() {
+		defer session.wg.Done()
+
+		if err := ic.downloadPackage(pkgName, version, realm); err != nil {
+			session.errChan <- err
+			return
+		}
+
+		// Log success only
+		fmt.Printf("%s Downloaded %s@%s\n", Check, pkgName, version)
+		session.successCount.Add(1)
+
+		// Read dependencies from the downloaded package
+		deps, err := ic.getPackageDependencies(pkgName, version, realm)
+		if err != nil {
+			log.Errorf("Failed to read dependencies for %s@%s: %v", pkgName, version, err)
+			return
+		}
+
+		for depName, depVersion := range deps {
+			ic.installPackageRecursive(depName, depVersion, realm, session)
+		}
+	}()
+}
+
+func (ic *InstallationContext) getPackageDependencies(name, version string, realm Realm) (map[string]string, error) {
+	fullName := packageIDFileName(name, version)
+	shortName := getPackageName(name)
+	packageDir := filepath.Join(ic.getIndexDir(realm), fullName, shortName)
+
+	// Check for wally.toml or bread.toml
+	for _, fname := range []string{"wally.toml", "bread.toml"} {
+		configPath := filepath.Join(packageDir, fname)
+		if _, err := os.Stat(configPath); err == nil {
+			var config breadTypes.Config
+			if _, err := toml.DecodeFile(configPath, &config); err != nil {
+				return nil, err
+			}
+			return config.Dependencies, nil
+		}
+	}
+
+	return nil, nil // No config found
 }
 
 func (ic *InstallationContext) InstallSinglePackage(name, versionSpec string, realm Realm) error {
@@ -173,8 +242,12 @@ func (ic *InstallationContext) InstallSinglePackage(name, versionSpec string, re
 	}
 
 	// Parse and download the package
-	pkgName, version := parsePackageSpec(name, versionSpec)
-	log.Infof("[◆] Downloading %s@%s", pkgName, version)
+	pkgName, versionConstraint := parsePackageSpec(name, versionSpec)
+	version, err := ResolveVersion(pkgName, versionConstraint)
+	if err != nil {
+		return err
+	}
+
 	if err := ic.downloadPackage(pkgName, version, realm); err != nil {
 		return err
 	}
@@ -185,23 +258,24 @@ func (ic *InstallationContext) InstallSinglePackage(name, versionSpec string, re
 		return err
 	}
 
-	shortName := getPackageName(pkgName)
-	linkPath := filepath.Join(baseDir, shortName+".lua")
-	content := ic.linkRootSameIndex(pkgName, version, realm)
-	if err := os.WriteFile(linkPath, []byte(content), 0644); err != nil {
+	if err := ic.writeLinkFile(baseDir, pkgName, version, realm); err != nil {
 		return err
 	}
 
-	log.Infof("Package %s@%s installed successfully", pkgName, version)
+	fmt.Printf("%s Downloaded %s@%s\n", Check, pkgName, version)
+
 	elapsed := time.Since(start)
-	log.Infof("Time taken: %dms", time.Duration(elapsed).Milliseconds())
+	log.Infof("%s Installed %s@%s in %dms", Check, pkgName, version, elapsed.Milliseconds())
 	return nil
 }
 
 func parsePackageSpec(alias, versionSpec string) (packageName, version string) {
-	if strings.Contains(versionSpec, "@") {
-		parts := strings.SplitN(versionSpec, "@", 2)
+	if parts := strings.SplitN(versionSpec, "@", 2); len(parts) == 2 {
 		return parts[0], parts[1]
+	}
+	// If versionSpec looks like "author/repo", assume it's the package name and version is empty (latest)
+	if strings.Contains(versionSpec, "/") {
+		return versionSpec, ""
 	}
 	return alias, versionSpec
 }
@@ -218,7 +292,7 @@ func (ic *InstallationContext) downloadPackage(name, version string, realm Realm
 	req.Header.Set("Accept", "application/octet-stream")
 	req.Header.Set("Wally-Version", "0.3.2")
 
-	resp, err := (&http.Client{}).Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -235,23 +309,19 @@ func (ic *InstallationContext) downloadPackage(name, version string, realm Realm
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+	}()
 
 	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
 		return err
 	}
-	tmpFile.Close()
 
 	packageDirName := packageIDFileName(name, version)
 	targetDir := filepath.Join(ic.getIndexDir(realm), packageDirName)
 
-	if err := unzipPackage(tmpFile.Name(), targetDir, name); err != nil {
-		return err
-	}
-
-	// Keep this one - it shows success per package
-	log.Infof("✓ %s@%s", name, version)
-	return nil
+	return unzipPackage(tmpFile.Name(), targetDir, name)
 }
 
 func (ic *InstallationContext) writeRootPackageLinks(realm Realm, dependencies map[string]string) error {
@@ -263,15 +333,19 @@ func (ic *InstallationContext) writeRootPackageLinks(realm Realm, dependencies m
 
 	for depName, versionSpec := range dependencies {
 		pkgName, version := parsePackageSpec(depName, versionSpec)
-		shortName := getPackageName(pkgName)
-		linkPath := filepath.Join(baseDir, shortName+".lua")
-		content := ic.linkRootSameIndex(pkgName, version, realm)
-		if err := os.WriteFile(linkPath, []byte(content), 0644); err != nil {
+		if err := ic.writeLinkFile(baseDir, pkgName, version, realm); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (ic *InstallationContext) writeLinkFile(baseDir, pkgName, version string, realm Realm) error {
+	shortName := getPackageName(pkgName)
+	linkPath := filepath.Join(baseDir, shortName+".lua")
+	content := ic.linkRootSameIndex(pkgName, version, realm)
+	return os.WriteFile(linkPath, []byte(content), 0644)
 }
 
 func (ic *InstallationContext) linkRootSameIndex(name, version string, realm Realm) string {
@@ -290,11 +364,7 @@ func (ic *InstallationContext) linkRootSameIndex(name, version string, realm Rea
 	}
 
 	// Log the types being re-exported
-	typeNames := make([]string, len(types))
-	for i, t := range types {
-		typeNames[i] = t.Name
-	}
-	log.Debugf("Re-exporting %d types from %s: %v", len(types), shortName, typeNames)
+	log.Debugf("Re-exporting %d types from %s", len(types), shortName)
 
 	// Generate link file with type re-exports
 	return typeExtractor.GenerateLinkFileWithTypes(requirePath, types, "_Package")
@@ -330,6 +400,11 @@ func unzipPackage(src, dest, packageName string) error {
 	for _, f := range r.File {
 		fpath := filepath.Join(packageDir, f.Name)
 
+		// Basic Zip Slip protection
+		if !strings.HasPrefix(fpath, filepath.Clean(packageDir)+string(os.PathSeparator)) {
+			return fmt.Errorf("illegal file path: %s", fpath)
+		}
+
 		if f.FileInfo().IsDir() {
 			os.MkdirAll(fpath, 0755)
 			continue
@@ -339,24 +414,26 @@ func unzipPackage(src, dest, packageName string) error {
 			return err
 		}
 
-		outFile, err := os.Create(fpath)
-		if err != nil {
-			return err
-		}
-
-		rc, err := f.Open()
-		if err != nil {
-			outFile.Close()
-			return err
-		}
-
-		_, err = io.Copy(outFile, rc)
-		outFile.Close()
-		rc.Close()
-
-		if err != nil {
+		if err := extractFile(f, fpath); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func extractFile(f *zip.File, destPath string) error {
+	outFile, err := os.Create(destPath)
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+
+	rc, err := f.Open()
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+
+	_, err = io.Copy(outFile, rc)
+	return err
 }

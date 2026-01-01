@@ -12,7 +12,6 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/charmbracelet/log"
-	"github.com/schollz/progressbar/v3"
 )
 
 type installSession struct {
@@ -22,35 +21,14 @@ type installSession struct {
 	downloaded   sync.Map
 	errors       chan error
 	successCount atomic.Int32
-	bar          *progressbar.ProgressBar
+	total        int
 }
 
 func newInstallSession(total int) *installSession {
 	return &installSession{
 		errors: make(chan error, 1000),
-		bar:    progressbar.Default(int64(total), "Installing packages"),
+		total:  total,
 	}
-}
-
-func (s *installSession) wait() {
-	s.wg.Wait()
-	s.bar.Finish()
-	fmt.Println()
-}
-
-func (s *installSession) markDownloaded(name, version string) {
-	pkgKey := fmt.Sprintf("%s@%s", name, version)
-	s.downloaded.Store(pkgKey, true)
-	s.bar.Describe("Installing " + pkgKey)
-	s.bar.Add(1)
-	s.successCount.Add(1)
-}
-
-func (s *installSession) printDownloaded() {
-	s.downloaded.Range(func(key, _ interface{}) bool {
-		fmt.Printf("%s Downloaded %s\n", Check, key.(string))
-		return true
-	})
 }
 
 func (s *installSession) collectErrors() error {
@@ -98,8 +76,7 @@ func (ic *InstallationContext) Install() error {
 		return err
 	}
 
-	session.wait()
-	session.printDownloaded()
+	session.wg.Wait()
 
 	if err := session.collectErrors(); err != nil {
 		return err
@@ -114,7 +91,7 @@ func (ic *InstallationContext) Install() error {
 	}
 
 	elapsed := time.Since(start)
-	log.Infof("%s Installed %d packages in %dms", Check, session.successCount.Load(), elapsed.Milliseconds())
+	log.Infof("%s Installed %d packages in %.2fs [%dms]", Check, session.successCount.Load(), elapsed.Seconds(), elapsed.Milliseconds())
 	return nil
 }
 
@@ -177,9 +154,11 @@ func (ic *InstallationContext) installPackage(name, spec string, realm Realm, se
 		return
 	}
 
-	session.wg.Go(func() {
+	session.wg.Add(1)
+	go func() {
+		defer session.wg.Done()
 		ic.downloadAndProcessPackage(pkgName, version, realm, session)
-	})
+	}()
 }
 
 func (ic *InstallationContext) resolveVersion(name, constraint string) (string, error) {
@@ -205,8 +184,8 @@ func (ic *InstallationContext) downloadAndProcessPackage(name, version string, r
 		return
 	}
 
-	session.markDownloaded(name, version)
-
+	n := session.successCount.Add(1)
+	fmt.Printf("%s [%d/%d] Downloaded %s@%s\n", Check, n, session.total, name, version)
 	deps, err := ic.getPackageDependencies(name, version, realm)
 	if err != nil {
 		log.Errorf("Failed to read dependencies for %s@%s: %v", name, version, err)
@@ -331,6 +310,6 @@ func (ic *InstallationContext) InstallSinglePackage(name, versionSpec string, re
 	}
 
 	elapsed := time.Since(start)
-	log.Infof("%s Installed %s@%s in %dms", Check, pkgName, version, elapsed.Milliseconds())
+	log.Infof("%s Installed %s@%s in %.2fs [%dms]", Check, pkgName, version, elapsed.Seconds(), elapsed.Milliseconds())
 	return nil
 }

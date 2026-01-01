@@ -33,6 +33,8 @@ export type Result<T> = {
 	error: string?,
 }
 
+export type Value<T, S> = T | S
+
 return module
 `
 	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
@@ -46,7 +48,15 @@ return module
 		t.Fatalf("ExtractTypesFromFile failed: %v", err)
 	}
 
-	expectedTypes := []string{"Config", "Handler", "Result"}
+	expectedTypes := []struct {
+		name     string
+		generics string
+	}{
+		{"Config", ""},
+		{"Handler", ""},
+		{"Result", "<T>"},
+		{"Value", "<T, S>"},
+	}
 	if len(types) != len(expectedTypes) {
 		t.Errorf("Expected %d types, got %d", len(expectedTypes), len(types))
 	}
@@ -55,8 +65,11 @@ return module
 		if i >= len(types) {
 			break
 		}
-		if types[i].Name != expected {
-			t.Errorf("Expected type %s, got %s", expected, types[i].Name)
+		if types[i].Name != expected.name {
+			t.Errorf("Expected type name %s, got %s", expected.name, types[i].Name)
+		}
+		if types[i].Generics != expected.generics {
+			t.Errorf("Expected type generics %s, got %s", expected.generics, types[i].Generics)
 		}
 	}
 }
@@ -102,18 +115,24 @@ func TestGenerateLinkFileWithTypes(t *testing.T) {
 	extractor := NewTypeExtractor()
 
 	types := []ExportedType{
-		{Name: "Config"},
-		{Name: "Handler"},
-		{Name: "Result"},
+		{Name: "Config", Generics: ""},
+		{Name: "Handler", Generics: ""},
+		{Name: "Result", Generics: "<T>"},
+		{Name: "Value", Generics: "<T, S = T>"},
+		{Name: "Scope", Generics: "<Constructors = Fusion>"},
 	}
 
 	requirePath := `require(script.Parent._Index["author_package@1.0.0"]["package"])`
-	result := extractor.GenerateLinkFileWithTypes(requirePath, types, "_Package")
+	result := extractor.GenerateLinkFileWithTypes(requirePath, types, "_Package", "author_package@1.0.0")
 
-	expected := `local _Package = require(script.Parent._Index["author_package@1.0.0"]["package"])
+	expected := `--Bread
+--author_package@1.0.0
+local _Package = require(script.Parent._Index["author_package@1.0.0"]["package"])
 export type Config = _Package.Config
 export type Handler = _Package.Handler
-export type Result = _Package.Result
+export type Result<T> = _Package.Result<T>
+export type Value<T, S = T> = _Package.Value<T, S>
+export type Scope<Constructors = Fusion> = _Package.Scope<Constructors>
 return _Package
 `
 
@@ -128,9 +147,11 @@ func TestGenerateLinkFileWithNoTypes(t *testing.T) {
 	var types []ExportedType
 
 	requirePath := `require(script.Parent._Index["author_package@1.0.0"]["package"])`
-	result := extractor.GenerateLinkFileWithTypes(requirePath, types, "_Package")
+	result := extractor.GenerateLinkFileWithTypes(requirePath, types, "_Package", "author_package@1.0.0")
 
-	expected := `local _Package = require(script.Parent._Index["author_package@1.0.0"]["package"])
+	expected := `--Bread
+--author_package@1.0.0
+local _Package = require(script.Parent._Index["author_package@1.0.0"]["package"])
 return _Package
 `
 
@@ -143,11 +164,11 @@ func TestDeduplicateTypes(t *testing.T) {
 	extractor := NewTypeExtractor()
 
 	types := []ExportedType{
-		{Name: "Foo"},
-		{Name: "Bar"},
-		{Name: "Foo"}, // duplicate
-		{Name: "Baz"},
-		{Name: "Bar"}, // duplicate
+		{Name: "Foo", Generics: ""},
+		{Name: "Bar", Generics: "<T>"},
+		{Name: "Foo", Generics: ""}, // duplicate
+		{Name: "Baz", Generics: "<A, B>"},
+		{Name: "Bar", Generics: "<T>"}, // duplicate
 	}
 
 	result := extractor.deduplicateTypes(types)

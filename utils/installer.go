@@ -32,14 +32,6 @@ func newInstallSession(total int) *installSession {
 	}
 }
 
-func (s *installSession) spawn(fn func()) {
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		fn()
-	}()
-}
-
 func (s *installSession) wait() {
 	s.wg.Wait()
 	s.bar.Finish()
@@ -185,7 +177,7 @@ func (ic *InstallationContext) installPackage(name, spec string, realm Realm, se
 		return
 	}
 
-	session.spawn(func() {
+	session.wg.Go(func() {
 		ic.downloadAndProcessPackage(pkgName, version, realm, session)
 	})
 }

@@ -171,11 +171,9 @@ func (ic *InstallationContext) installPackage(name, spec string, realm Realm, se
 		return
 	}
 
-	session.wg.Add(1)
-	go func() {
-		defer session.wg.Done()
+	session.wg.Go(func() {
 		ic.downloadAndProcessPackage(pkgName, version, realm, session)
-	}()
+	})
 }
 
 func (ic *InstallationContext) resolveVersion(name, constraint string) (string, error) {
@@ -202,9 +200,8 @@ func (ic *InstallationContext) downloadAndProcessPackage(name, version string, r
 	}
 
 	n := session.successCount.Add(1)
-	// fmt.Printf("%s [%d/%d] Downloaded %s@%s\n", Check, n, session.total.Load(), name, version)
 	session.msgChan <- pkgInstalledMsg{
-		name:    fmt.Sprintf("%s %s", pkgNameStyle.Render(name), version),
+		name:    fmt.Sprintf("%s %s", name, versionStyle.Render(version)),
 		current: int(n),
 		total:   int(session.total.Load()),
 	}
@@ -305,22 +302,39 @@ func (ic *InstallationContext) saveLockfile(lockfile breadTypes.Lockfile) error 
 	return nil
 }
 
-// InstallSinglePackage installs a single package without recursive dependencies.
+// InstallSinglePackage installs a single package and its dependencies. for add command
 func (ic *InstallationContext) InstallSinglePackage(name, versionSpec string, realm Realm) error {
 	start := time.Now()
 
-	if err := os.MkdirAll(ic.getIndexDir(realm), 0755); err != nil {
+	session := newInstallSession(1)
+
+	// Start UI
+	p := tea.NewProgram(initialModel(session.msgChan))
+	session.program = p
+
+	go func() {
+		if err := os.MkdirAll(ic.getIndexDir(realm), 0755); err != nil {
+			session.msgChan <- installFinishedMsg{err}
+			return
+		}
+
+		ic.installPackage(name, versionSpec, realm, session)
+
+		session.wg.Wait()
+		session.msgChan <- installFinishedMsg{nil}
+	}()
+
+	if _, err := p.Run(); err != nil {
+		return err
+	}
+
+	if err := session.collectErrors(); err != nil {
 		return err
 	}
 
 	pkgName, constraint := parsePackageSpec(name, versionSpec)
-
-	version, err := ResolveVersion(pkgName, constraint)
+	version, err := ic.resolveVersion(pkgName, constraint)
 	if err != nil {
-		return err
-	}
-
-	if err := ic.downloadPackage(pkgName, version, realm); err != nil {
 		return err
 	}
 
@@ -334,6 +348,6 @@ func (ic *InstallationContext) InstallSinglePackage(name, versionSpec string, re
 	}
 
 	elapsed := time.Since(start)
-	log.Infof("%s Installed %s@%s in %.2fs [%dms]", Check, pkgName, version, elapsed.Seconds(), elapsed.Milliseconds())
+	log.Infof("%s Installed %s@%s and dependencies in %.2fs [%dms]", Check, pkgName, version, elapsed.Seconds(), elapsed.Milliseconds())
 	return nil
 }

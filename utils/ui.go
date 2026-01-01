@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -32,20 +33,31 @@ type pkgInstalledMsg struct {
 type installFinishedMsg struct{ err error }
 
 var (
-	pkgNameStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("211"))
-	doneStyle    = lipgloss.NewStyle().Margin(1, 2)
-	checkMark    = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).SetString("✓")
+	subtle    = lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#383838"}
+	highlight = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
+	special   = lipgloss.AdaptiveColor{Light: "#43BF6D", Dark: "#73F59F"}
+
+	pkgNameStyle  = lipgloss.NewStyle().Foreground(highlight).Bold(true)
+	versionStyle  = lipgloss.NewStyle().Foreground(subtle)
+	checkMark     = lipgloss.NewStyle().Foreground(special).SetString("✓")
+	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(highlight).MarginBottom(1)
+	statusStyle   = lipgloss.NewStyle().Foreground(subtle).Italic(true)
+	progressStyle = lipgloss.NewStyle().Foreground(highlight)
+	doneStyle     = lipgloss.NewStyle().Foreground(special).Bold(true).MarginTop(1)
+	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
 )
 
 func initialModel(installChan chan tea.Msg) model {
 	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
+	s.Spinner = spinner.MiniDot
+	s.Style = lipgloss.NewStyle().Foreground(highlight)
+
 	p := progress.New(
 		progress.WithDefaultGradient(),
-		progress.WithWidth(25),
+		progress.WithWidth(40),
 		progress.WithoutPercentage(),
 	)
+
 	return model{
 		spinner:     s,
 		progress:    p,
@@ -71,7 +83,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.progress.Width = min(msg.Width-4, 50)
+		m.progress.Width = min(msg.Width-6, 60)
 		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -81,9 +93,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case pkgInstalledMsg:
 		m.packages = append(m.packages, msg.name)
-		m.current = msg.current // Store current
-		m.total = msg.total     // Store total
-		// Calculate progress
+		m.current = msg.current
+		m.total = msg.total
 		if msg.total > 0 {
 			prog := float64(msg.current) / float64(msg.total)
 			return m, tea.Batch(
@@ -113,29 +124,70 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	s := ""
+	if m.quitting {
+		return "\n" + errorStyle.Render("✗ Installation cancelled") + "\n\n"
+	}
+
+	var b strings.Builder
+	b.WriteString("\n")
 
 	if m.done {
-		s += "\n"
-		for _, pkg := range m.packages {
-			s += fmt.Sprintf(" %s %s\n", checkMark, pkg)
+		// Show completion summary
+		b.WriteString(doneStyle.Render("✓ Installation complete!"))
+		b.WriteString("\n\n")
+
+		if len(m.packages) > 0 {
+			b.WriteString(statusStyle.Render(fmt.Sprintf("Installed %d package%s:", len(m.packages), pluralize(len(m.packages)))))
+			b.WriteString("\n\n")
+
+			// Show recently installed packages (last 5)
+			start := max(0, len(m.packages)-5)
+			for i := start; i < len(m.packages); i++ {
+				b.WriteString(fmt.Sprintf("  %s %s\n", checkMark, m.packages[i]))
+			}
+
+			if len(m.packages) > 5 {
+				b.WriteString(statusStyle.Render(fmt.Sprintf("\n  ... and %d more\n", len(m.packages)-5)))
+			}
 		}
-		s += doneStyle.Render(fmt.Sprintf("Done! Installed %d packages.\n", len(m.packages)))
-		return s
+
+		b.WriteString("\n")
+		return b.String()
 	}
 
-	if m.quitting {
-		return "Installation cancelled.\n"
+	// Active installation view
+	b.WriteString(headerStyle.Render("Installing packages"))
+	b.WriteString("\n\n")
+
+	// Show last 3 installed packages
+	if len(m.packages) > 0 {
+		start := max(0, len(m.packages)-3)
+		for i := start; i < len(m.packages); i++ {
+			fmt.Fprintf(&b, "  %s %s\n", checkMark, m.packages[i])
+		}
+		b.WriteString("\n")
 	}
 
-	// Removed the top spinner line since it's moved below
-	s += "\n"
+	// Progress bar with spinner
+	fmt.Fprintf(&b, "  %s %s", m.spinner.View(), progressStyle.Render(m.progress.View()))
+	b.WriteString("\n")
 
-	for _, pkg := range m.packages {
-		s += fmt.Sprintf(" %s %s\n", checkMark, pkg)
+	// Status line
+	var status string
+	if m.total > 0 {
+		status = fmt.Sprintf("%d of %d package%s", m.current, m.total, pluralize(m.total))
+	} else {
+		status = "Resolving dependencies..."
 	}
+	b.WriteString(statusStyle.Render(fmt.Sprintf("  %s", status)))
+	b.WriteString("\n\n")
 
-	s += fmt.Sprintf("\n %s Installing %s [%d/%d]\n", m.spinner.View(), m.progress.View(), m.current, m.total)
+	return b.String()
+}
 
-	return s
+func pluralize(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }

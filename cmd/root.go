@@ -24,8 +24,8 @@ var rootCmd = &cobra.Command{
 
 const (
 	currentVersion = config.Version
-	repoOwner      = "yoheiyayoi"
-	repoName       = "bread"
+	repoOwner      = config.RepoOwner
+	repoName       = config.RepoName
 	checkInterval  = 24 * time.Hour
 )
 

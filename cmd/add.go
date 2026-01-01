@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,22 +23,31 @@ var addCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		projectPath, err := os.Getwd()
 		if err != nil {
-			log.Error("Error getting current directory:", err)
+			log.Errorf("Error getting current directory: %s", err)
 			return
 		}
 
 		packageSpec := args[0]
 		depType, _ := cmd.Flags().GetString("types")
+		pkgName, _ := cmd.Flags().GetString("name")
 
 		tomlPath := filepath.Join(projectPath, "bread.toml")
 		var config breadTypes.Config
 
 		if _, err := toml.DecodeFile(tomlPath, &config); err != nil {
-			log.Error("Failed to read bread.toml:", err)
+			log.Errorf("Failed to read bread.toml: %s", err)
 			return
 		}
 
-		packageName := extractPackageName(packageSpec)
+		var packageName string
+		if pkgName != "" {
+			packageName = pkgName
+		} else {
+			if packageName, err = extractPackageName(packageSpec); err != nil {
+				log.Errorf("Failed to extract package name: %s", err)
+				return
+			}
+		}
 
 		if !addDependency(&config, depType, packageName, packageSpec) {
 			return
@@ -48,12 +58,12 @@ var addCmd = &cobra.Command{
 		encoder := toml.NewEncoder(&buf)
 		encoder.Indent = "  "
 		if err := encoder.Encode(config); err != nil {
-			log.Error("Failed to encode bread.toml:", err)
+			log.Errorf("Failed to encode bread.toml: %s", err)
 			return
 		}
 
 		if err := os.WriteFile(tomlPath, buf.Bytes(), 0644); err != nil {
-			log.Error("Failed to write bread.toml:", err)
+			log.Errorf("Failed to write bread.toml: %s", err)
 			return
 		}
 
@@ -65,13 +75,13 @@ var addCmd = &cobra.Command{
 			return
 		}
 
-		if err := installation.Install(); err != nil {
-			log.Error("Installation failed:", err)
+		if err := installation.InstallSinglePackage(packageName, packageSpec, utils.Realm(depType)); err != nil {
+			log.Errorf("Installation failed: %s", err)
 		}
 	},
 }
 
-func addDependency(config *breadTypes.Config, depType, packageName, packageSpec string) bool {
+func addDependency(config *breadTypes.Config, depType string, packageName, packageSpec string) bool {
 	var deps map[string]string
 	var section string
 
@@ -105,22 +115,20 @@ func addDependency(config *breadTypes.Config, depType, packageName, packageSpec 
 	return true
 }
 
-func extractPackageName(spec string) string {
+func extractPackageName(spec string) (string, error) {
 	parts := strings.Split(spec, "/")
 	if len(parts) < 2 {
-		return spec
+		return "", errors.New("Invalid package!")
 	}
 	// Extract name part (e.g. "author/name" -> "name")
 	name := strings.Split(parts[1], "@")[0]
 
 	// Capitalize first letter
-	if len(name) > 0 {
-		r := []rune(name)
-		r[0] = []rune(strings.ToUpper(string(r[0])))[0]
-		return string(r)
+	// btw i simplify this shit
+	if name == "" {
+		return "", errors.New("invalid package name")
 	}
-
-	return name
+	return strings.ToUpper(name[:1]) + name[1:], nil
 }
 
 func mapDepTypeToRealm(depType string) utils.Realm {
@@ -137,4 +145,5 @@ func mapDepTypeToRealm(depType string) utils.Realm {
 func init() {
 	rootCmd.AddCommand(addCmd)
 	addCmd.Flags().String("types", "shared", "Specify the package types to add (shared, server, dev)")
+	addCmd.Flags().String("name", "", "Specify package name")
 }

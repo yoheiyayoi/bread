@@ -4,8 +4,8 @@ type Config struct {
 	Package            Package           `toml:"package"`
 	BreadConfig        BreadConfig       `toml:"bread"`
 	Dependencies       map[string]string `toml:"dependencies"`
-	ServerDependencies map[string]string `toml:"server_dependencies"`
-	DevDependencies    map[string]string `toml:"dev_dependencies"`
+	ServerDependencies map[string]string `toml:"server-dependencies"`
+	DevDependencies    map[string]string `toml:"dev-dependencies"`
 }
 
 type Package struct {

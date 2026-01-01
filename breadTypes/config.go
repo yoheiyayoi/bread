@@ -9,10 +9,17 @@ type Config struct {
 }
 
 type Package struct {
-	Name     string `toml:"name"`
-	Version  string `toml:"version"`
-	Registry string `toml:"registry"`
-	Realm    string `toml:"realm"`
+	Name        string   `toml:"name"`
+	Description string   `toml:"description"`
+	Version     string   `toml:"version"`
+	License     string   `toml:"license"`
+	Authors     []string `toml:"authors"`
+	Realm       string   `toml:"realm"`
+	Registry    string   `toml:"registry"`
+	Homepage    string   `toml:"homepage"`
+	Repository  string   `toml:"repository"`
+	Exclude     []string `toml:"exclude"`
+	Private     bool     `toml:"private"`
 }
 
 type BreadConfig struct {

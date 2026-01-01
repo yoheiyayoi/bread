@@ -59,14 +59,13 @@ var addCmd = &cobra.Command{
 
 		log.Infof("Added %s to dependencies", packageSpec)
 
-		// Install single package
+		// Install all packages to ensure dependencies are resolved and lockfile is updated
 		installation := utils.NewInstaller(projectPath, nil, nil)
 		if installation == nil {
 			return
 		}
 
-		realm := mapDepTypeToRealm(depType)
-		if err := installation.InstallSinglePackage(packageName, packageSpec, realm); err != nil {
+		if err := installation.Install(); err != nil {
 			log.Error("Installation failed:", err)
 		}
 	},
@@ -111,7 +110,17 @@ func extractPackageName(spec string) string {
 	if len(parts) < 2 {
 		return spec
 	}
-	return strings.Title(strings.Split(parts[1], "@")[0])
+	// Extract name part (e.g. "author/name" -> "name")
+	name := strings.Split(parts[1], "@")[0]
+
+	// Capitalize first letter
+	if len(name) > 0 {
+		r := []rune(name)
+		r[0] = []rune(strings.ToUpper(string(r[0])))[0]
+		return string(r)
+	}
+
+	return name
 }
 
 func mapDepTypeToRealm(depType string) utils.Realm {

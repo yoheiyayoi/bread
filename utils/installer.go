@@ -11,6 +11,7 @@ import (
 	"yoheiyayoi/bread/breadTypes"
 
 	"github.com/BurntSushi/toml"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/log"
 )
 
@@ -21,14 +22,18 @@ type installSession struct {
 	downloaded   sync.Map
 	errors       chan error
 	successCount atomic.Int32
-	total        int
+	total        atomic.Int32
+	program      *tea.Program
+	msgChan      chan tea.Msg
 }
 
 func newInstallSession(total int) *installSession {
-	return &installSession{
-		errors: make(chan error, 1000),
-		total:  total,
+	s := &installSession{
+		errors:  make(chan error, 1000),
+		msgChan: make(chan tea.Msg, 100),
 	}
+	s.total.Store(int32(total))
+	return s
 }
 
 func (s *installSession) collectErrors() error {
@@ -72,11 +77,23 @@ func (ic *InstallationContext) Install() error {
 	log.Info("Installing packages...")
 	session := newInstallSession(total)
 
-	if err := ic.downloadAll(realms, session); err != nil {
+	// Start UI
+	p := tea.NewProgram(initialModel(session.msgChan))
+	session.program = p
+
+	go func() {
+		if err := ic.downloadAll(realms, session); err != nil {
+			session.msgChan <- installFinishedMsg{err}
+			return
+		}
+
+		session.wg.Wait()
+		session.msgChan <- installFinishedMsg{nil}
+	}()
+
+	if _, err := p.Run(); err != nil {
 		return err
 	}
-
-	session.wg.Wait()
 
 	if err := session.collectErrors(); err != nil {
 		return err
@@ -185,7 +202,13 @@ func (ic *InstallationContext) downloadAndProcessPackage(name, version string, r
 	}
 
 	n := session.successCount.Add(1)
-	fmt.Printf("%s [%d/%d] Downloaded %s@%s\n", Check, n, session.total, name, version)
+	// fmt.Printf("%s [%d/%d] Downloaded %s@%s\n", Check, n, session.total.Load(), name, version)
+	session.msgChan <- pkgInstalledMsg{
+		name:    fmt.Sprintf("%s %s", pkgNameStyle.Render(name), version),
+		current: int(n),
+		total:   int(session.total.Load()),
+	}
+
 	deps, err := ic.getPackageDependencies(name, version, realm)
 	if err != nil {
 		log.Errorf("Failed to read dependencies for %s@%s: %v", name, version, err)
@@ -195,6 +218,7 @@ func (ic *InstallationContext) downloadAndProcessPackage(name, version string, r
 	depsList := sortedDeps(deps)
 	session.storePackage(name, version, depsList)
 
+	session.total.Add(int32(len(deps)))
 	for depName, depSpec := range deps {
 		ic.installPackage(depName, depSpec, realm, session)
 	}

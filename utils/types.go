@@ -23,8 +23,9 @@ type TypeExtractor struct {
 // NewTypeExtractor creates a new extractor
 func NewTypeExtractor() *TypeExtractor {
 	return &TypeExtractor{
-		// matches "export type Foo = ..." or "export type Foo<T> = ..."
-		exportTypePattern: regexp.MustCompile(`^\s*export\s+type\s+(\w+)(<[^>]*>)?\s*=`),
+		// matches "export type Foo" or "export type Foo<T>"
+		// We'll parse the rest manually to handle nested generics
+		exportTypePattern: regexp.MustCompile(`^\s*export\s+type\s+(\w+)`),
 	}
 }
 
@@ -41,13 +42,32 @@ func (te *TypeExtractor) ExtractTypesFromFile(filePath string) ([]ExportedType, 
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		matches := te.exportTypePattern.FindStringSubmatch(line)
-		if len(matches) >= 2 {
+		loc := te.exportTypePattern.FindStringIndex(line)
+		if loc != nil {
+			// Found "export type Name"
+			// Now look for generics starting after the name
+			name := strings.Fields(line[loc[0]:loc[1]])[2] // export type Name -> Name is index 2
+			rest := line[loc[1]:]
+
 			generics := ""
-			if len(matches) >= 3 && matches[2] != "" {
-				generics = matches[2]
+			if strings.HasPrefix(strings.TrimSpace(rest), "<") {
+				// Find the matching closing bracket
+				startIdx := strings.Index(rest, "<")
+				balance := 0
+				for i, r := range rest[startIdx:] {
+					if r == '<' {
+						balance++
+					} else if r == '>' {
+						balance--
+						if balance == 0 {
+							generics = rest[startIdx : startIdx+i+1]
+							break
+						}
+					}
+				}
 			}
-			types = append(types, ExportedType{Name: matches[1], Generics: generics})
+
+			types = append(types, ExportedType{Name: name, Generics: generics})
 		}
 	}
 

@@ -12,7 +12,7 @@ import (
 // I don't recomment to convert to wally if you use custom package directories in bread.toml
 // because wally doesn't support that feature yet
 // and if you already used it, you have to manually rename the folders or re-install packages after converting
-// in case if you rename the folders, the script that requires those packages will not break
+// in case if you use and you rename the folders to wally style, the script that requires those packages will break!!
 
 var convertCmd = &cobra.Command{
 	Use:   "convert",

@@ -86,10 +86,19 @@ func getPackageVersions(name string) ([]string, error) {
 	}
 
 	metadataMu.Lock()
+	if existing, ok := metadataCache[name]; ok {
+		metadataMu.Unlock()
+		return existing, nil
+	}
+
 	metadataCache[name] = versions
 	metadataMu.Unlock()
 
 	return versions, nil
+}
+
+func GetPackageVersion(name string) ([]string, error) {
+	return getPackageVersions(name)
 }
 
 func MatchConstraint(version, constraint string) bool {
@@ -111,8 +120,8 @@ func MatchConstraint(version, constraint string) bool {
 	}
 
 	// Handle ^ constraint
-	if strings.HasPrefix(constraint, "^") {
-		baseVer := strings.TrimPrefix(constraint, "^")
+	if after, ok := strings.CutPrefix(constraint, "^"); ok {
+		baseVer := after
 		// If baseVer is just "1", treat as "1.0.0"
 		if !strings.Contains(baseVer, ".") {
 			baseVer += ".0.0"

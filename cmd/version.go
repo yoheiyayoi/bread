@@ -13,7 +13,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print current version of bread",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("bread version", Version)
+		fmt.Println("🥖 Bread version", Version)
 	},
 }
 

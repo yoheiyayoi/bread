@@ -27,12 +27,15 @@ type installSession struct {
 	msgChan      chan tea.Msg
 }
 
+var downloadLimit = make(chan struct{}, 15)
+
 func newInstallSession(total int) *installSession {
 	s := &installSession{
 		errors:  make(chan error, 1000),
 		msgChan: make(chan tea.Msg, 100),
 	}
 	s.total.Store(int32(total))
+
 	return s
 }
 
@@ -158,20 +161,20 @@ func (ic *InstallationContext) linkAll(realms []struct {
 }
 
 func (ic *InstallationContext) installPackage(name, spec string, realm Realm, session *installSession) {
-	pkgName, constraint := parsePackageSpec(name, spec)
-
-	version, err := ic.resolveVersion(pkgName, constraint)
-	if err != nil {
-		session.errors <- err
-		return
-	}
-
-	pkgID := fmt.Sprintf("%s:%s@%s", realm, pkgName, version)
-	if _, exists := session.visited.LoadOrStore(pkgID, true); exists {
-		return
-	}
-
 	session.wg.Go(func() {
+		pkgName, constraint := ParsePackageSpec(name, spec)
+
+		version, err := ic.resolveVersion(pkgName, constraint)
+		if err != nil {
+			session.errors <- err
+			return
+		}
+
+		pkgID := fmt.Sprintf("%s:%s@%s", realm, pkgName, version)
+		if _, exists := session.visited.LoadOrStore(pkgID, true); exists {
+			return
+		}
+
 		ic.downloadAndProcessPackage(pkgName, version, realm, session)
 	})
 }
@@ -332,7 +335,7 @@ func (ic *InstallationContext) InstallSinglePackage(name, versionSpec string, re
 		return err
 	}
 
-	pkgName, constraint := parsePackageSpec(name, versionSpec)
+	pkgName, constraint := ParsePackageSpec(name, versionSpec)
 	version, err := ic.resolveVersion(pkgName, constraint)
 	if err != nil {
 		return err

@@ -16,7 +16,7 @@ import (
 var removeCmd = &cobra.Command{
 	Use:     "remove <package>",
 	Aliases: []string{"rm", "uninstall"},
-	Short:   "Remove project dependencies",
+	Short:   "Remove project dependencies [aliases: rm]",
 	Long:    "Remove project dependencies and reinstall remaining packages",
 	Args:    cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {

@@ -19,7 +19,7 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   config.AppName,
-	Short: "Bread CLI tool 🥖 - v" + config.Version,
+	Short: "🥖 Bread - Coolest Roblox package manager (v" + config.Version + ")",
 }
 
 const (
@@ -142,15 +142,12 @@ func (uc *UpdateChecker) displayIfUpdateAvailable(latestVer, changelogURL string
 	linebar := color.YellowString("┃  ")
 
 	if latest.GreaterThan(current) {
-		// info := color.New(color.FgCyan, color.Bold).SprintFunc()
+		info := color.New(color.FgCyan, color.Bold).SprintFunc()
 
 		fmt.Printf("%s%s %s → %s\n", linebar, color.YellowString("update available!"), color.RedString(currentVersion), color.GreenString(latestVer))
-		fmt.Printf("%sgo to %s to download\n", linebar, color.CyanString(changelogURL)) // bread self-upgrade not implemented yet bruh
+		fmt.Printf("%srun %s to upgrade\n", linebar, info("`bread self-upgrade`"))
+		fmt.Printf("%schangelog: %s\n", linebar, changelogURL)
 		fmt.Println()
-
-		// fmt.Printf("%srun %s to upgrade\n", linebar, info("`bread self-upgrade`"))
-		// fmt.Printf("%schangelog: %s\n", linebar, changelogURL)
-		// fmt.Printf("%s\n", linebar)
 	}
 }
 

@@ -137,17 +137,17 @@ func (m model) View() string {
 		b.WriteString("\n\n")
 
 		if len(m.packages) > 0 {
-			b.WriteString(statusStyle.Render(fmt.Sprintf("Installed %d package%s:", len(m.packages), pluralize(len(m.packages)))))
+			b.WriteString(fmt.Sprintf("Installed %d package%s:", len(m.packages), pluralize(len(m.packages))))
 			b.WriteString("\n\n")
 
 			// Show recently installed packages (last 5)
 			start := max(0, len(m.packages)-5)
 			for i := start; i < len(m.packages); i++ {
-				b.WriteString(fmt.Sprintf("  %s %s\n", checkMark, m.packages[i]))
+				fmt.Fprintf(&b, "  %s %s\n", checkMark, m.packages[i])
 			}
 
 			if len(m.packages) > 5 {
-				b.WriteString(statusStyle.Render(fmt.Sprintf("\n  ... and %d more\n", len(m.packages)-5)))
+				b.WriteString(fmt.Sprintf("\n  ... and %d more\n", len(m.packages)-5))
 			}
 		}
 

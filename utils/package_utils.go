@@ -30,7 +30,7 @@ func (ic *InstallationContext) getPackageDependencies(name, version string, real
 	return nil, nil // No config found
 }
 
-func parsePackageSpec(alias, versionSpec string) (packageName, version string) {
+func ParsePackageSpec(alias, versionSpec string) (packageName, version string) {
 	if parts := strings.SplitN(versionSpec, "@", 2); len(parts) == 2 {
 		return parts[0], parts[1]
 	}
@@ -42,6 +42,9 @@ func parsePackageSpec(alias, versionSpec string) (packageName, version string) {
 }
 
 func (ic *InstallationContext) downloadPackage(name, version string, realm Realm) error {
+	downloadLimit <- struct{}{}
+	defer func() { <-downloadLimit }()
+
 	url := fmt.Sprintf("https://api.wally.run/v1/package-contents/%s/%s", name, version)
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -53,7 +56,7 @@ func (ic *InstallationContext) downloadPackage(name, version string, realm Realm
 	req.Header.Set("Accept", "application/octet-stream")
 	req.Header.Set("Wally-Version", "0.3.2")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := ic.Client.Do(req)
 	if err != nil {
 		return err
 	}

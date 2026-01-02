@@ -1,7 +1,7 @@
 package config
 
 const (
-	Version   = "0.0.4"
+	Version   = "0.1.0"
 	AppName   = "bread"
 	RepoOwner = "yoheiyayoi"
 	RepoName  = "bread"

@@ -11,7 +11,7 @@ import (
 var installCmd = &cobra.Command{
 	Use:     "install",
 	Aliases: []string{"i"},
-	Short:   "Install project dependencies",
+	Short:   "Install project dependencies [aliases: i]",
 	Long:    "Install project dependencies (And you can use 'bread i' instead of 'bread install')",
 	Run: func(cmd *cobra.Command, args []string) {
 		projectPath, err := os.Getwd()

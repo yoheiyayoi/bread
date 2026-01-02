@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 	"yoheiyayoi/bread/breadTypes"
 
 	"github.com/BurntSushi/toml"
@@ -20,6 +22,7 @@ type InstallationContext struct {
 	DevDir      string
 	SharedPath  *string
 	ServerPath  *string
+	Client      *http.Client
 }
 
 type Realm string
@@ -75,6 +78,15 @@ func NewInstaller(projectPath string, sharedPath *string, serverPath *string) *I
 		DevDir:      getDir(config.BreadConfig.DevDir, "DevPackages"),
 		SharedPath:  sharedPath,
 		ServerPath:  serverPath,
+
+		Client: &http.Client{
+			Transport: &http.Transport{
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 20,
+				IdleConnTimeout:     90 * time.Second,
+			},
+			Timeout: 60 * time.Second,
+		},
 	}
 }
 

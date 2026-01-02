@@ -16,7 +16,7 @@ func (ic *InstallationContext) writeRootPackageLinks(realm Realm, dependencies m
 	}
 
 	for depName, versionSpec := range dependencies {
-		pkgName, version := parsePackageSpec(depName, versionSpec)
+		pkgName, version := ParsePackageSpec(depName, versionSpec)
 		if err := ic.writeLinkFile(baseDir, pkgName, version, realm); err != nil {
 			return err
 		}

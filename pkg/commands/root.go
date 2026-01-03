@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"yoheiyayoi/bread/pkg/config"
+	"yoheiyayoi/bread/pkg/utils"
 
+	"github.com/charmbracelet/log"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -24,6 +26,22 @@ var (
 // Functions
 func init() {
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
+
+	// update checker
+	isLatest, latestVer, err := utils.CheckForUpdates()
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
+	if !isLatest {
+		info := color.New(color.FgCyan, color.Bold).SprintFunc()
+
+		fmt.Println(color.YellowString("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+		fmt.Printf("%s A new version of Bread is available: %s → %s\n", InfoIcon, color.RedString(config.Version), color.GreenString(latestVer))
+		fmt.Printf("%s To update, run: %s\n", InfoIcon, info("bread self-update"))
+		fmt.Println(color.YellowString("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+	}
 }
 
 func Execute() {

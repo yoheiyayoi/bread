@@ -61,3 +61,24 @@ func CreateManifest(name string) error {
 
 	return nil
 }
+
+func DecodeManifest(config *breadTypes.Config) error {
+	manifestPath, err := ManifestPath()
+	if err != nil {
+		return fmt.Errorf("getting manifest path: %s", err)
+	}
+
+	if _, err := toml.DecodeFile(manifestPath, &config); err != nil {
+		return fmt.Errorf("%s not found!, Run bread init first", ManifestFileName)
+	}
+
+	return nil
+}
+
+func CountDependencies(realms []RealmDeps) int {
+	total := 0
+	for _, r := range realms {
+		total += len(r.deps)
+	}
+	return total
+}

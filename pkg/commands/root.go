@@ -5,6 +5,7 @@ import (
 	"os"
 	"yoheiyayoi/bread/pkg/config"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -14,7 +15,11 @@ var rootCmd = &cobra.Command{
 	Short: "🥖 Bread - Coolest Roblox package manager (v" + config.Version + ")",
 }
 
-const LineBar = "┃  "
+var (
+	LineBar   = "┃  "
+	CheckIcon = color.GreenString("✓")
+	InfoIcon  = color.BlueString("ℹ")
+)
 
 // Functions
 func init() {

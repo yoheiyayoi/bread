@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"strings"
+	"yoheiyayoi/bread/pkg/utils"
 
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
@@ -21,6 +22,13 @@ var initCmd = &cobra.Command{
 			fmt.Println("  → Expected format: username/project_name")
 			return
 		}
+
+		if err := utils.CreateManifest(name); err != nil {
+			log.Errorf("Failed to initialize project: %v", err)
+			return
+		}
+
+		log.Infof("%s Init project successfully!", CheckIcon)
 	},
 }
 

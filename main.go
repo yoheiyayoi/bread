@@ -1,9 +1,13 @@
 package main
 
 import (
-	"yoheiyayoi/bread/cmd"
+	"yoheiyayoi/bread/pkg/commands"
+
+	"github.com/charmbracelet/log"
 )
 
+// Functions
 func main() {
-	cmd.Execute()
+	log.SetReportTimestamp(false)
+	commands.Execute()
 }

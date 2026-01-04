@@ -25,7 +25,7 @@ var (
 
 func ResolveVersion(name, constraintStr string) (string, error) {
 	// fetch versions
-	versions, err := getPackageVersions(name)
+	versions, err := GetPackageVersions(name)
 	if err != nil {
 		return "", err
 	}
@@ -58,7 +58,7 @@ func ResolveVersion(name, constraintStr string) (string, error) {
 	return "", fmt.Errorf("no version found for %s satisfying %s", name, constraintStr)
 }
 
-func getPackageVersions(name string) ([]string, error) {
+func GetPackageVersions(name string) ([]string, error) {
 	metadataMu.RLock()
 	if versions, ok := metadataCache[name]; ok {
 		metadataMu.RUnlock()

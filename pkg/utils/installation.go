@@ -188,6 +188,11 @@ func (ic *InstallationContext) InstallAll() error {
 		return nil
 	}
 
+	log.Info("Clean existing packages...")
+	if err := ic.Clean(); err != nil {
+		return fmt.Errorf("failed to clean existing packages: %w", err)
+	}
+
 	return RunPackageInstallation(ic, flatPackages)
 }
 

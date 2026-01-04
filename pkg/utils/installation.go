@@ -90,6 +90,7 @@ func (m model) Init() tea.Cmd {
 				}
 
 				m.resultsChan <- fullSpec
+				// m.resultsChan <- name
 			}
 		}()
 	}
@@ -167,7 +168,6 @@ func (m model) View() string {
 // End progress bar section
 
 func (ic *InstallationContext) InstallAll() error {
-	start := time.Now()
 	log.Info("Checking dependencies...")
 	realms := []RealmDeps{
 		{RealmShared, ic.Manifest.Dependencies},
@@ -177,8 +177,8 @@ func (ic *InstallationContext) InstallAll() error {
 
 	var flatPackages [][]string
 	for _, realm := range realms {
-		for name, version := range realm.deps {
-			flatPackages = append(flatPackages, []string{fmt.Sprintf("%s@%s", name, version), realm.realm})
+		for name, spec := range realm.deps {
+			flatPackages = append(flatPackages, []string{fmt.Sprintf("%s@%s", name, spec), realm.realm})
 		}
 	}
 
@@ -188,11 +188,27 @@ func (ic *InstallationContext) InstallAll() error {
 		return nil
 	}
 
+	return RunPackageInstallation(ic, flatPackages)
+}
+
+func RunPackageInstallation(ic *InstallationContext, packagesArray [][]string) error {
+	if len(packagesArray) == 0 {
+		return nil
+	}
+
+	total := len(packagesArray)
+	start := time.Now()
 	log.Info("Installing packages...")
 
-	p := tea.NewProgram(newModel(flatPackages, ic))
+	p := tea.NewProgram(newModel(packagesArray, ic))
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running installation UI: %v", err)
+	}
+
+	realms := []RealmDeps{
+		{RealmShared, ic.Manifest.Dependencies},
+		{RealmServer, ic.Manifest.ServerDependencies},
+		{RealmDev, ic.Manifest.DevDependencies},
 	}
 
 	if err := ic.linkAll(realms); err != nil {
@@ -200,11 +216,11 @@ func (ic *InstallationContext) InstallAll() error {
 	}
 
 	if err := ic.writeLockfile(); err != nil {
-		return err
+		return fmt.Errorf("failed to write lockfile: %w", err)
 	}
 
 	elapsed := time.Since(start)
-	log.Infof("Done! Installed %d packages in %.2fs", total, elapsed.Seconds())
+	log.Infof("Done! Installed %d package(s) in %.2fs", total, elapsed.Seconds())
 	return nil
 }
 
